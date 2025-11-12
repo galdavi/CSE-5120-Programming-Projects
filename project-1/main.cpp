@@ -6,13 +6,17 @@
 #include <queue>
 #include <fstream>
 #include <sstream>
+#include <functional> // Required for std::greater
+#include <stack>
 
-int findRoute(std::unordered_map<std::string, std::vector<std::pair<std::string, int>>> &cityMap, const std::string &startCity, const std::string &endCity);
+typedef std::pair<std::pair<int, int>, std::string> Node;
+
+int findRoute(std::unordered_map<std::string, std::vector<std::pair<int, std::string>>> &cityMap, const std::string &startCity, const std::string &endCity, int limit);
 
 int main(int argc, char *argv[])
 {
 
-    std::unordered_map<std::string, std::vector<std::pair<std::string, int>>> cityMap{};
+    std::unordered_map<std::string, std::vector<std::pair<int, std::string>>> cityMap{};
 
     std::string city{argv[2]};
     std::string destination{argv[3]};
@@ -43,8 +47,8 @@ int main(int argc, char *argv[])
         ss >> cityA >> cityB >> distance;
 
         //
-        cityMap[cityA].push_back({cityB, distance});
-        cityMap[cityB].push_back({cityA, distance});
+        cityMap[cityA].push_back({distance, cityB});
+        cityMap[cityB].push_back({distance, cityA});
     }
 
     // for (auto const &[key, val] : cityMap)
@@ -58,34 +62,64 @@ int main(int argc, char *argv[])
     //     std::cout << "\n";
     // }
 
-    std::cout << "Distance: " << findRoute(cityMap, city, destination) << " km\n";
+    int result{-1};
+    for (int limit{0}; limit < static_cast<int>(cityMap.size()); ++limit)
+    {
+        result = findRoute(cityMap, city, destination, limit);
+        if (result != -1)
+        {
+            break;
+        }
+    }
+
+    if (result != -1)
+    {
+        std::cout << "Distance: " << result << " km\n";
+    }
+    else
+    {
+        std::cout << "NO ROUTE\n";
+    }
     return 0;
 }
 
-int findRoute(std::unordered_map<std::string, std::vector<std::pair<std::string, int>>> &cityMap, const std::string &startCity, const std::string &endCity)
+int findRoute(std::unordered_map<std::string, std::vector<std::pair<int, std::string>>> &cityMap, const std::string &startCity, const std::string &endCity, int limit)
 {
-    std::queue<std::string> q{};
-    int totalDistance = 0;
 
-    q.push(startCity);
+    int totalCities{static_cast<int>(cityMap.size())};
 
-    while (!q.empty())
+    std::priority_queue<Node,
+                        std::vector<Node>,
+                        std::greater<Node>>
+        pq{};
+
+    int level{0};
+    pq.push({{0, level}, startCity});
+
+    while (!pq.empty())
     {
-        std::string currentCity = q.front();
-        q.pop();
+
+        std::string currentCity{pq.top().second};
+        int totalDistance{pq.top().first.first};
+        int currentLevel{pq.top().first.second};
+
+        if (currentLevel > limit)
+        {
+            break;
+        }
+        
+        pq.pop();
 
         if (currentCity == endCity)
         {
             return totalDistance;
         }
-
         for (const auto &neighbor : cityMap[currentCity])
         {
-            q.push(neighbor.first);
-            totalDistance += neighbor.second;
+            pq.push({{neighbor.first + totalDistance, level}, neighbor.second});
         }
+        level++;
     }
 
     return -1;
-    
 }
