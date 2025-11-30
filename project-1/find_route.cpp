@@ -2,40 +2,54 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include <tuple> 
+#include <tuple>
 #include <fstream>
 #include <sstream>
 #include <functional>
 #include <queue>
 
-
-// Name alias for better readability of Node representation and graph structure
-using Node = std::tuple<int, int, std::string>;     // (totalDistance, level, cityName)
 using adjacencyList = std::unordered_map<std::string, std::vector<std::pair<int, std::string>>>; // city -> list of (distance, neighborCity)
 
-// Function prototypes
-int findRoute(adjacencyList &cityMap, const std::string &startCity, const std::string &endCity, int limit);
-void displayResult(int result, const std::string& startCity, const std::string& endCity);
+struct Node
+{
+    int cost{0};
+    std::string city{};
+    std::string parent{};
+    std::vector<Node> path{};
+    // Overload the < operator for priority queue
+    bool operator<(const Node &other) const
+    {
+        // For min-heap based on cost
+        return cost > other.cost;
+    }
+};
+
+std::vector<Node> findShortestPath(const adjacencyList &cityMap, const std::string &startCity, const std::string &endCity);
+void displayResults(const std::vector<Node> &path);
 
 int main(int argc, char *argv[])
 {
+    if(argc != 4)
+    {
+        std::cerr << "Usage: " << argv[0] << " <input_file> <start_city> <end_city>\n";
+        return 1;
+    }
     
     std::ifstream inputFile{argv[1]};
-    if (!inputFile){
+    if (!inputFile)
+    {
         std::cerr << "Error opening file: " << argv[1] << "\n";
         return 1;
     }
 
-    // Data structure to hold the city map
     adjacencyList cityMap{};
-    
-    
     std::string strInput{};
 
     // Process input file line by line
     while (std::getline(inputFile, strInput))
     {
-        if(strInput == "END OF INPUT"){
+        if (strInput == "END OF INPUT")
+        {
             break;
         }
 
@@ -43,89 +57,113 @@ int main(int argc, char *argv[])
         std::string cityB{};
         int distance{};
 
-        //Parse the line
+        // Parse the line
         std::stringstream ss(strInput);
         ss >> cityA >> cityB >> distance;
 
         // Populate the city map (undirected graph)
         cityMap[cityA].push_back({distance, cityB});
         cityMap[cityB].push_back({distance, cityA});
-
     }
-    
+
     // Retrieve start and end cities from command line arguments
     std::string startCity{argv[2]};
     std::string endCity{argv[3]};
     
-    int result{-1};
 
+    int numberOfCities{static_cast<int>(cityMap.size())};
+    std::vector<Node> shortestPath {findShortestPath(cityMap, startCity, endCity)};
 
-
-    for(int limit{0}; limit < static_cast<int>(cityMap.size()); ++limit)
-    {
-        result = findRoute(cityMap, startCity, endCity, limit);
-        if (result != -1)
-        {
-            break;
-        }
-    }
-    
-    
-    displayResult(result, startCity, endCity);
+    displayResults(shortestPath);
 
     return 0;
 }
 
-
-int findRoute(adjacencyList &cityMap, const std::string &startCity, const std::string &endCity, int limit)
+// Function to find the shortest path using Uniform Cost Search with depth limit, returns the path as a vector of Nodes
+std::vector<Node> findShortestPath(const adjacencyList &cityMap, const std::string &startCity, const std::string &endCity)
 {
-    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> minPQ{};
 
-    minPQ.push(std::make_tuple(0, 0, startCity)); // (totalDistance, level, cityName)
+    std::priority_queue<Node> pq{};
 
+    // Initialize the start node
+    Node startNode{0, startCity, "", {}};
 
-    while (!minPQ.empty())
+    // If start and end cities are the same, return immediately
+    if(startCity == endCity)
     {
-        auto currentNode {minPQ.top()};
-        minPQ.pop();
+        return {startNode, startNode};
+    }
 
-        int currentDistance {std::get<0>(currentNode)};
-        int currentLevel {std::get<1>(currentNode)};
-        std::string currentCity {std::get<2>(currentNode)};
-        
-        if (currentCity == endCity){
-            return currentDistance;
+    startNode.path.push_back(startNode);
+    
+
+    // Initialize the priority queue with the start city
+    pq.push(startNode);
+
+    while (!pq.empty())
+    {
+        Node currNode = pq.top();
+        pq.pop();
+
+        // If we reached the destination city, return the path
+        if (currNode.city == endCity)
+        {
+            return currNode.path;
         }
 
+        if(cityMap.find(currNode.city) == cityMap.end())
+        {
+            continue; // No neighbors to explore
+        }
 
-        if (currentLevel < limit){
+        // Explore neighbors
+        for (const auto &neighbor : cityMap.at(currNode.city))
+        {
+            bool inPath{false};
 
-            // Explore neighbor cities
-            for (const auto& neighbor : cityMap[currentCity]){
-                int neighborDistance {neighbor.first};
-                std::string neighborCity {neighbor.second};
-                
-                // Push neighbor city into the priority queue with updated distance and level
-                minPQ.push(std::make_tuple(currentDistance + neighborDistance, currentLevel + 1, neighborCity));
+            for(const auto &nodeInPath : currNode.path)
+            {
+                if(nodeInPath.city == neighbor.second)
+                {
+                    inPath = true;
+                    break;
+                }
+            }
+
+            //Node is unique in path, proceed
+            if(!inPath) 
+            {
+                // Create a new node for the neighbor (current cost, neighbor city, current city as parent, updated path)
+                Node nextNode{neighbor.first + currNode.cost, neighbor.second, currNode.city, currNode.path};
+                nextNode.path.push_back(nextNode);
+                pq.push(nextNode);
             }
         }
     }
-    return -1;
+    return {};
 }
-// Function to display the result, follows output format specifications
-void displayResult(int result, const std::string& startCity, const std::string& endCity){
-    std::cout << "distance: ";
-    if (result != -1){
-        std::cout << result << " km\n";
-    } else{
-        std::cout << "infinity\n";
+
+
+// Function to display the results
+void displayResults(const std::vector<Node> &path)
+{
+    // If the path is empty, no route was found
+    if (path.empty())
+    {
+        std::cout << "distance: infinity\n";
+        std::cout << "route:\nnone\n";
+        return;
     }
 
+    // Display total distance and route
+    int totalDistance = path.back().cost;
+    std::cout << "distance: " << totalDistance << " km\n";
     std::cout << "route:\n";
-    if (result != -1){
-        std::cout << startCity << " to " << endCity << ", " << result << " km\n";
-    } else{
-        std::cout << "none\n";
-    }
 
+    // Display each segment of the route
+    for (size_t i = 1; i < path.size(); ++i)
+    {
+        int segmentDistance = path[i].cost - path[i - 1].cost;
+        std::cout << path[i - 1].city << " to " << path[i].city << ", " << segmentDistance << " km\n";
+    }
 }
